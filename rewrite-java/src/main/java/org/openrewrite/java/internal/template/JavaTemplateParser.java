@@ -23,6 +23,7 @@ import org.openrewrite.internal.ListUtils;
 import org.openrewrite.internal.PropertyPlaceholderHelper;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.RandomizeIdVisitor;
+import org.openrewrite.java.internal.JavaTypeCache;
 import org.openrewrite.java.tree.*;
 
 import java.util.*;
@@ -56,6 +57,8 @@ public class JavaTemplateParser {
     private static final String SUBSTITUTED_ANNOTATION = "@java.lang.annotation.Documented public @interface SubAnnotation { int value(); }";
 
     private final Supplier<JavaParser> parser;
+    private final JavaParser.Builder<? extends JavaParser, ?> parserBuilder;
+    private JavaTypeCache typeCache;
     private final Consumer<String> onAfterVariableSubstitution;
     private final Consumer<String> onBeforeParseTemplate;
     private final Set<String> imports;
@@ -65,6 +68,18 @@ public class JavaTemplateParser {
     public JavaTemplateParser(Supplier<JavaParser> parser, Consumer<String> onAfterVariableSubstitution,
                               Consumer<String> onBeforeParseTemplate, Set<String> imports) {
         this.parser = parser;
+        this.parserBuilder = null;
+        this.onAfterVariableSubstitution = onAfterVariableSubstitution;
+        this.onBeforeParseTemplate = onBeforeParseTemplate;
+        this.imports = imports;
+        this.statementTemplateGenerator = new BlockStatementTemplateGenerator(imports);
+        this.annotationTemplateGenerator = new AnnotationTemplateGenerator(imports);
+    }
+
+    public JavaTemplateParser(JavaParser.Builder<? extends JavaParser,?> parserBuilder, Consumer<String> onAfterVariableSubstitution,
+                              Consumer<String> onBeforeParseTemplate, Set<String> imports) {
+        this.parser = null;
+        this.parserBuilder = parserBuilder;
         this.onAfterVariableSubstitution = onAfterVariableSubstitution;
         this.onBeforeParseTemplate = onBeforeParseTemplate;
         this.imports = imports;
@@ -238,8 +253,22 @@ public class JavaTemplateParser {
         ExecutionContext ctx = new InMemoryExecutionContext();
         ctx.putMessage(JavaParser.SKIP_SOURCE_SET_TYPE_GENERATION, true);
         return stub.contains("@SubAnnotation") ?
-                parser.get().reset().parse(ctx, stub, SUBSTITUTED_ANNOTATION).get(0) :
-                parser.get().reset().parse(ctx, stub).get(0);
+                createParser().parse(ctx, stub, SUBSTITUTED_ANNOTATION).get(0) :
+                createParser().parse(ctx, stub).get(0);
+    }
+
+    @SuppressWarnings("DataFlowIssue")
+    private JavaParser createParser() {
+        if (parser != null) {
+            return parser.get().reset();
+        }
+
+        JavaParser.Builder<? extends JavaParser, ?> builder = parserBuilder.clone();
+        if (typeCache == null) {
+            typeCache = new JavaTypeCache();
+        }
+        builder = builder.typeCache(typeCache);
+        return builder.build();
     }
 
     @SuppressWarnings("unchecked")

@@ -53,6 +53,15 @@ public class JavaTemplate implements SourceTemplate<J, JavaCoordinates> {
         this.templateParser = new JavaTemplateParser(parser, onAfterVariableSubstitution, onBeforeParseTemplate, imports);
     }
 
+    private JavaTemplate(Supplier<Cursor> parentScopeGetter, JavaParser.Builder<? extends JavaParser, ?> parserBuilder, String code, Set<String> imports,
+                         Consumer<String> onAfterVariableSubstitution, Consumer<String> onBeforeParseTemplate) {
+        this.parentScopeGetter = parentScopeGetter;
+        this.code = code;
+        this.onAfterVariableSubstitution = onAfterVariableSubstitution;
+        this.parameterCount = StringUtils.countOccurrences(code, "#{");
+        this.templateParser = new JavaTemplateParser(parserBuilder, onAfterVariableSubstitution, onBeforeParseTemplate, imports);
+    }
+
     public String getCode() {
         return code;
     }
@@ -127,7 +136,10 @@ public class JavaTemplate implements SourceTemplate<J, JavaCoordinates> {
         private final String code;
         private final Set<String> imports = new HashSet<>();
 
-        private Supplier<JavaParser> javaParser = () -> JavaParser.fromJavaVersion().build();
+        @Nullable
+        private Supplier<JavaParser> javaParser;
+        @Nullable
+        private JavaParser.Builder<? extends JavaParser, ?> javaParserBuilder = JavaParser.fromJavaVersion();
 
         private Consumer<String> onAfterVariableSubstitution = s -> {
         };
@@ -170,6 +182,13 @@ public class JavaTemplate implements SourceTemplate<J, JavaCoordinates> {
 
         public Builder javaParser(Supplier<JavaParser> javaParser) {
             this.javaParser = javaParser;
+            this.javaParserBuilder = null;
+            return this;
+        }
+
+        public Builder javaParser(JavaParser.Builder<? extends JavaParser, ?> javaParserBuilder) {
+            this.javaParser = null;
+            this.javaParserBuilder = javaParserBuilder;
             return this;
         }
 
@@ -183,8 +202,11 @@ public class JavaTemplate implements SourceTemplate<J, JavaCoordinates> {
             return this;
         }
 
+        @SuppressWarnings("DataFlowIssue")
         public JavaTemplate build() {
-            return new JavaTemplate(parentScope, javaParser, code, imports,
+            return javaParser != null ? new JavaTemplate(parentScope, javaParser, code, imports,
+                    onAfterVariableSubstitution, onBeforeParseTemplate)
+                    : new JavaTemplate(parentScope, javaParserBuilder, code, imports,
                     onAfterVariableSubstitution, onBeforeParseTemplate);
         }
     }
